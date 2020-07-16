@@ -143,8 +143,7 @@ template <int TG_DIM_X, int TG_DIM_Y,
                                           uint32_t M,
                                           uint32_t N,
                                           uint32_t P,
-                                          uint32_t block_num,
-                                          uint32_t unroll_factor) { 
+                                          uint32_t block_num) {
                                    
         for (uint32_t iter_y = __bsg_y; iter_y < BLOCK_SIZE_Y; iter_y += TG_DIM_Y) { 
             for (uint32_t iter_x = __bsg_x; iter_x < BLOCK_SIZE_X; iter_x += TG_DIM_X) { 
@@ -152,43 +151,8 @@ template <int TG_DIM_X, int TG_DIM_Y,
 
                 // sum += A[iter_y][iter_x] * B[iter_y][iter_x]
                 // Remember, B is transposed
-                switch(unroll_factor) {
-                    case 2:
-                        #pragma GCC unroll 2
-                        for (uint32_t k = 0; k < SUBBLOCK_SIZE; k ++) { 
-                            sum += A[iter_y][k] * B[iter_x][k]; 
-                        }
-                        break;
-                    case 4:
-                        #pragma GCC unroll 4
-                        for (uint32_t k = 0; k < SUBBLOCK_SIZE; k ++) { 
-                            sum += A[iter_y][k] * B[iter_x][k]; 
-                        }
-                        break;
-                    case 8:
-                        #pragma GCC unroll 8
-                        for (uint32_t k = 0; k < SUBBLOCK_SIZE; k ++) { 
-                            sum += A[iter_y][k] * B[iter_x][k]; 
-                        }
-                        break;
-                    case 16:
-                        #pragma GCC unroll 16
-                        for (uint32_t k = 0; k < SUBBLOCK_SIZE; k ++) { 
-                            sum += A[iter_y][k] * B[iter_x][k]; 
-                        }
-                        break;
-                    case 32:
-                        #pragma GCC unroll 32
-                        for (uint32_t k = 0; k < SUBBLOCK_SIZE; k ++) { 
-                            sum += A[iter_y][k] * B[iter_x][k]; 
-                        }
-                        break;
-                    default:
-                        #pragma GCC unroll 1
-                        for (uint32_t k = 0; k < SUBBLOCK_SIZE; k ++) { 
-                            sum += A[iter_y][k] * B[iter_x][k]; 
-                        }
-                        break;
+                for (uint32_t k = 0; k < SUBBLOCK_SIZE; k ++) { 
+                    sum += A[iter_y][k] * B[iter_x][k]; 
                 }
                 
                 if (!block_num) { 
@@ -211,8 +175,7 @@ template <int TG_DIM_X, int TG_DIM_Y,
     group_matrix_multiply(TA *A, TB *B, TC *C, 
                           uint32_t M,
                           uint32_t N,
-                          uint32_t P,
-                          uint32_t unroll_factor) { 
+                          uint32_t P) {
     
         // Declare tile-group shared memory
         TileGroupSharedMem<TA, (BLOCK_SIZE_Y * SUBBLOCK_SIZE), TG_DIM_X, TG_DIM_Y, STRIPE_SIZE> A_arr;
@@ -251,8 +214,7 @@ template <int TG_DIM_X, int TG_DIM_Y,
                                                  BLOCK_SIZE_X, BLOCK_SIZE_Y,
                                                  SUBBLOCK_SIZE, STRIPE_SIZE>
                                                  (A_sh, B_sh, C_sh,
-                                                  M, N, P, block_num,
-                                                  unroll_factor);
+                                                  M, N, P, block_num);
             
             barrier.sync();
         }
@@ -264,6 +226,8 @@ template <int TG_DIM_X, int TG_DIM_Y,
                                  (C, C_sh, M, P,
                                   __bsg_tile_group_id_y, __bsg_tile_group_id_x); 
         
+        barrier.sync();
+
         return 0;
     }
 
@@ -278,26 +242,20 @@ extern "C" {
         int rc;
         bsg_cuda_print_stat_kernel_start();
 
-        for (int i = 0; i < 6; i++) {
-            bsg_cuda_print_stat_start(i+1);
-
-            rc = group_matrix_multiply <TEMPLATE_TG_DIM_X,
-                                        TEMPLATE_TG_DIM_Y,
-                                        TEMPLATE_BLOCK_SIZE_X,
-                                        TEMPLATE_BLOCK_SIZE_Y,
-                                        TEMPLATE_SUBBLOCK_SIZE,
-                                        TEMPLATE_STRIPE_SIZE>  (A, B, C,
-                                                                A_HEIGHT,
-                                                                A_WIDTH,
-                                                                B_WIDTH,
-                                                                (1 << i));
-
-            bsg_cuda_print_stat_end(i+1);
-        }
+        rc = group_matrix_multiply <TEMPLATE_TG_DIM_X,
+                                    TEMPLATE_TG_DIM_Y,
+                                    TEMPLATE_BLOCK_SIZE_X,
+                                    TEMPLATE_BLOCK_SIZE_Y,
+                                    TEMPLATE_SUBBLOCK_SIZE,
+                                    TEMPLATE_STRIPE_SIZE>  (A, B, C,
+                                                            A_HEIGHT,
+                                                            A_WIDTH,
+                                                            B_WIDTH);
 
         barrier.sync();
 
         bsg_cuda_print_stat_kernel_end();
+
         return rc;
     }
 }
